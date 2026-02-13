@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Type Racer - Terminal Edition</title>
+    <link href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --terminal-green: #00ff00;
+            --terminal-dark-green: #008800;
+            --terminal-bg: #0a0a0a;
+            --terminal-screen: #001100;
+            --scanline-color: rgba(0, 255, 0, 0.05);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        @keyframes flicker {
+            0% { opacity: 0.98; }
+            5% { opacity: 1; }
+            10% { opacity: 0.98; }
+            15% { opacity: 1; }
+            20% { opacity: 0.98; }
+            100% { opacity: 1; }
+        }
+
+        @keyframes scanlines {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(10px); }
+        }
+
+        body {
+            font-family: 'VT323', monospace;
+            background: var(--terminal-bg);
+            color: var(--terminal-green);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            position: relative;
+            animation: flicker 0.15s infinite;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 0, 0, 0.15),
+                rgba(0, 0, 0, 0.15) 1px,
+                transparent 1px,
+                transparent 2px
+            );
+            pointer-events: none;
+            z-index: 2;
+            animation: scanlines 10s linear infinite;
+        }
+
+        body::after {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(ellipse at center, transparent 0%, rgba(0, 0, 0, 0.5) 100%);
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .container {
+            max-width: 1200px;
+            width: 100%;
+            position: relative;
+            z-index: 3;
+        }
+
+        .crt-effect {
+            background: var(--terminal-screen);
+            border: 3px solid var(--terminal-green);
+            border-radius: 8px;
+            padding: 2rem;
+            box-shadow: 
+                0 0 20px rgba(0, 255, 0, 0.3),
+                inset 0 0 50px rgba(0, 255, 0, 0.05);
+            position: relative;
+        }
+
+        .crt-effect::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(
+                to bottom,
+                transparent 50%,
+                var(--scanline-color) 50%
+            );
+            background-size: 100% 4px;
+            pointer-events: none;
+        }
+
+        h1 {
+            font-family: 'VT323', monospace;
+            font-size: 4rem;
+            text-align: center;
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5rem;
+            text-shadow: 
+                0 0 10px var(--terminal-green),
+                0 0 20px var(--terminal-green);
+            animation: blink-cursor 1.5s step-end infinite;
+        }
+
+        @keyframes blink-cursor {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .subtitle {
+            text-align: center;
+            font-size: 1.5rem;
+            margin-bottom: 2rem;
+            opacity: 0.8;
+        }
+
+        .terminal-line {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 1.2rem;
+            margin: 0.5rem 0;
+            line-height: 1.6;
+        }
+
+        .terminal-line::before {
+            content: '> ';
+            color: var(--terminal-dark-green);
+        }
+
+        .status-box {
+            background: rgba(0, 255, 0, 0.05);
+            border: 2px solid var(--terminal-dark-green);
+            padding: 1.5rem;
+            margin: 2rem 0;
+            text-align: center;
+        }
+
+        .status-box h2 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+            animation: pulse-green 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse-green {
+            0%, 100% { 
+                text-shadow: 0 0 10px var(--terminal-green);
+            }
+            50% { 
+                text-shadow: 0 0 20px var(--terminal-green), 0 0 30px var(--terminal-green);
+            }
+        }
+
+        .countdown {
+            font-size: 8rem;
+            text-align: center;
+            margin: 3rem 0;
+            text-shadow: 
+                0 0 20px var(--terminal-green),
+                0 0 40px var(--terminal-green);
+            animation: pulse-green 1s ease-in-out infinite;
+        }
+
+        .text-display {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 2rem;
+            border: 2px solid var(--terminal-dark-green);
+            margin: 2rem 0;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 1.8rem;
+            line-height: 2.5;
+            letter-spacing: 0.1rem;
+        }
+
+        .text-display .char {
+            display: inline-block;
+            transition: all 0.1s ease;
+        }
+
+        .text-display .char.correct {
+            color: var(--terminal-green);
+            text-shadow: 0 0 5px var(--terminal-green);
+        }
+
+        .text-display .char.incorrect {
+            color: #ff0000;
+            background: rgba(255, 0, 0, 0.2);
+            text-shadow: 0 0 5px #ff0000;
+        }
+
+        .text-display .char.current {
+            background: var(--terminal-green);
+            color: var(--terminal-bg);
+            animation: blink-block 0.8s step-end infinite;
+        }
+
+        @keyframes blink-block {
+            50% { opacity: 0.5; }
+        }
+
+        .players-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin: 2rem 0;
+        }
+
+        .player-panel {
+            border: 2px solid var(--terminal-dark-green);
+            padding: 1.5rem;
+            background: rgba(0, 255, 0, 0.03);
+        }
+
+        .player-panel.active {
+            border-color: var(--terminal-green);
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.3);
+        }
+
+        .player-title {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.3rem;
+        }
+
+        .stats-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+
+        .stat-box {
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 1rem;
+            opacity: 0.7;
+            text-transform: uppercase;
+        }
+
+        .stat-value {
+            font-size: 3rem;
+            margin-top: 0.5rem;
+            text-shadow: 0 0 10px var(--terminal-green);
+        }
+
+        .progress-container {
+            background: rgba(0, 0, 0, 0.5);
+            height: 30px;
+            border: 2px solid var(--terminal-dark-green);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            width: 0%;
+            background: var(--terminal-green);
+            transition: width 0.2s ease;
+            box-shadow: 0 0 10px var(--terminal-green);
+            position: relative;
+        }
+
+        .progress-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: repeating-linear-gradient(
+                90deg,
+                transparent,
+                transparent 10px,
+                rgba(0, 0, 0, 0.2) 10px,
+                rgba(0, 0, 0, 0.2) 20px
+            );
+        }
+
+        .input-container {
+            margin: 2rem 0;
+        }
+
+        .input-container input {
+            width: 100%;
+            padding: 1rem;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 1.5rem;
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid var(--terminal-green);
+            color: var(--terminal-green);
+            outline: none;
+            caret-color: var(--terminal-green);
+        }
+
+        .input-container input::selection {
+            background: var(--terminal-green);
+            color: var(--terminal-bg);
+        }
+
+        .input-container input:focus {
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+        }
+
+        .input-container input:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .btn-container {
+            text-align: center;
+            margin: 2rem 0;
+        }
+
+        .btn {
+            font-family: 'VT323', monospace;
+            font-size: 2rem;
+            padding: 1rem 3rem;
+            background: transparent;
+            border: 3px solid var(--terminal-green);
+            color: var(--terminal-green);
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.3rem;
+            transition: all 0.3s ease;
+            margin: 0.5rem;
+            text-shadow: 0 0 5px var(--terminal-green);
+        }
+
+        .btn:hover:not(:disabled) {
+            background: var(--terminal-green);
+            color: var(--terminal-bg);
+            box-shadow: 0 0 20px var(--terminal-green);
+            text-shadow: none;
+        }
+
+        .btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .result-banner {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--terminal-screen);
+            border: 5px solid var(--terminal-green);
+            padding: 3rem 4rem;
+            text-align: center;
+            z-index: 1000;
+            box-shadow: 0 0 50px rgba(0, 255, 0, 0.5);
+        }
+
+        .result-banner h2 {
+            font-size: 4rem;
+            margin-bottom: 2rem;
+            animation: pulse-green 1s ease-in-out infinite;
+        }
+
+        .result-banner p {
+            font-size: 2rem;
+            margin: 1rem 0;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .loading-dots::after {
+            content: '';
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2.5rem;
+            }
+
+            .players-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .text-display {
+                font-size: 1.3rem;
+            }
+
+            .countdown {
+                font-size: 5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="crt-effect">
+            <h1>█ TYPE.RACER █</h1>
+            <div class="subtitle">TERMINAL EDITION v1.0</div>
+
+            <!-- Lobby Screen -->
+            <div id="lobbyScreen">
+                <div class="status-box">
+                    <h2>SYSTEM READY</h2>
+                    <p class="terminal-line">Initializing neural link...</p>
+                    <p class="terminal-line">Establishing connection to mainframe...</p>
+                </div>
+                
+                <div class="btn-container">
+                    <button class="btn" onclick="findMatch()">
+                        <span>▶ FIND OPPONENT</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Matchmaking Screen -->
+            <div id="matchmakingScreen" class="hidden">
+                <div class="status-box">
+                    <h2 class="loading-dots">SEARCHING FOR OPPONENT</h2>
+                    <p class="terminal-line">Scanning global network...</p>
+                    <p class="terminal-line">Players online: <span id="onlineCount">-</span></p>
+                </div>
+                
+                <div class="btn-container">
+                    <button class="btn" onclick="cancelMatch()">
+                        <span>✖ CANCEL</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Game Screen -->
+            <div id="gameScreen" class="hidden">
+                <div id="countdown" class="countdown hidden"></div>
+                
+                <div id="textDisplay" class="text-display"></div>
+                
+                <div class="players-grid">
+                    <div class="player-panel active" id="myPanel">
+                        <div class="player-title">█ YOU █</div>
+                        <div class="stats-row">
+                            <div class="stat-box">
+                                <div class="stat-label">WPM</div>
+                                <div class="stat-value" id="myWpm">0</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-label">ACC</div>
+                                <div class="stat-value" id="myAcc">100%</div>
+                            </div>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-fill" id="myProgress"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="player-panel" id="opponentPanel">
+                        <div class="player-title">█ OPPONENT █</div>
+                        <div class="stats-row">
+                            <div class="stat-box">
+                                <div class="stat-label">WPM</div>
+                                <div class="stat-value" id="oppWpm">0</div>
+                            </div>
+                            <div class="stat-box">
+                                <div class="stat-label">ACC</div>
+                                <div class="stat-value" id="oppAcc">100%</div>
+                            </div>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress-fill" id="oppProgress"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="input-container">
+                    <input 
+                        type="text" 
+                        id="typingInput" 
+                        placeholder="[SYSTEM: AWAITING START SEQUENCE...]"
+                        disabled
+                        autocomplete="off"
+                        autocorrect="off"
+                        autocapitalize="off"
+                        spellcheck="false"
+                    >
+                </div>
+                
+                <div class="btn-container">
+                    <button class="btn" id="readyBtn" onclick="setReady()">
+                        <span>✓ READY</span>
+                    </button>
+                    <button class="btn" onclick="leaveGame()">
+                        <span>✖ DISCONNECT</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+
+    <script>
+        /* 
+        ═══════════════════════════════════════════════════════════════════════
+        FIREBASE SETUP INSTRUCTIONS:
+        ═══════════════════════════════════════════════════════════════════════
+        
+        1. Go to https://firebase.google.com and create a new project
+        
+        2. Enable Realtime Database:
+           - Build → Realtime Database → Create Database
+           - Start in TEST MODE (or use the rules below)
+        
+        3. Set Database Rules (Build → Realtime Database → Rules tab):
+           {
+             "rules": {
+               "players": {
+                 "$playerId": {
+                   ".write": true,
+                   ".read": true
+                 }
+               },
+               "matches": {
+                 "$matchId": {
+                   ".write": true,
+                   ".read": true,
+                   ".indexOn": ["status", "timestamp"]
+                 }
+               }
+             }
+           }
+        
+        4. Get your config:
+           - Project Settings → General → Your apps → Web app
+           - Copy the firebaseConfig object
+        
+        5. Replace the config below with your actual Firebase credentials
+        
+        ═══════════════════════════════════════════════════════════════════════
+        */
+
+        // Firebase configuration - REPLACE WITH YOUR OWN CONFIG
+        const firebaseConfig = {
+            apiKey: "AIzaSyBePoMD_BtWfFJNL-PhYqeLRlVxzp31vRE",
+            authDomain: "typing-96684.firebaseapp.com",
+            projectId: "typing-96684",
+            storageBucket: "typing-96684.firebasestorage.app",
+            messagingSenderId: "548048416376",
+            appId: "1:548048416376:web:2e8454f56c0ee25b51878d"
+        };
+
+        // Initialize Firebase
+        let app, db, playerId, matchId, playerRef, matchRef;
+        
+        try {
+            app = firebase.initializeApp(firebaseConfig);
+            db = firebase.database();
+            playerId = 'player_' + Math.random().toString(36).substr(2, 9);
+            console.log('Firebase initialized successfully');
+        } catch (error) {
+            console.error('Firebase initialization error:', error);
+            alert('⚠ SYSTEM ERROR: Firebase not configured properly.\n\nTo enable multiplayer:\n1. Create a Firebase project at firebase.google.com\n2. Enable Realtime Database\n3. Replace firebaseConfig with your own credentials\n\nFor now, enjoy the retro terminal UI! 🟢');
+        }
+
+        // Text samples
+        const textSamples = [
+            "The quick brown fox jumps over the lazy dog while the sun sets behind the mountains.",
+            "Programming is the art of telling another human what one wants the computer to do.",
+            "In the depths of winter I finally learned that there was in me an invincible summer.",
+            "Success is not final, failure is not fatal: it is the courage to continue that counts.",
+            "The only way to do great work is to love what you do and never stop learning.",
+            "Life is like riding a bicycle. To keep your balance you must keep moving forward.",
+            "The greatest glory in living lies not in never falling, but in rising every time we fall.",
+            "Innovation distinguishes between a leader and a follower in the technology industry.",
+            "The future belongs to those who believe in the beauty of their dreams and aspirations.",
+            "Excellence is not a skill, it is an attitude that we must cultivate every single day."
+        ];
+
+        // Game state
+        let currentText = '';
+        let gameActive = false;
+        let startTime = null;
+        let myStats = { position: 0, correct: 0, incorrect: 0, finished: false };
+        let isHost = false;
+        let myReadyState = false;
+        let opponentReadyState = false;
+
+        // Show online players count
+        function updateOnlineCount() {
+            if (!db) return;
+            
+            const playersRef = db.ref('players');
+            playersRef.on('value', (snapshot) => {
+                const count = snapshot.numChildren();
+                const countEl = document.getElementById('onlineCount');
+                if (countEl) {
+                    countEl.textContent = count;
+                }
+            });
+        }
+
+        // Find match
+        async function findMatch() {
+            if (!db) {
+                alert('Firebase not configured. Please set up Firebase to enable multiplayer.');
+                return;
+            }
+
+            document.getElementById('lobbyScreen').classList.add('hidden');
+            document.getElementById('matchmakingScreen').classList.remove('hidden');
+            
+            updateOnlineCount();
+
+            // Add player to waiting pool
+            playerRef = db.ref('players/' + playerId);
+            await playerRef.set({
+                status: 'waiting',
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            });
+
+            // Listen for available matches
+            const matchesRef = db.ref('matches');
+            matchesRef.orderByChild('status').equalTo('waiting').limitToFirst(1).once('value', async (snapshot) => {
+                if (snapshot.exists()) {
+                    // Join existing match
+                    const matchData = snapshot.val();
+                    matchId = Object.keys(matchData)[0];
+                    isHost = false;
+                    
+                    await db.ref('matches/' + matchId).update({
+                        status: 'ready',
+                        player2: playerId
+                    });
+                    
+                    joinMatch();
+                } else {
+                    // Create new match
+                    createMatch();
+                }
+            });
+        }
+
+        async function createMatch() {
+            isHost = true;
+            matchId = 'match_' + Date.now();
+            
+            matchRef = db.ref('matches/' + matchId);
+            await matchRef.set({
+                status: 'waiting',
+                player1: playerId,
+                player2: null,
+                text: textSamples[Math.floor(Math.random() * textSamples.length)],
+                player1Ready: false,
+                player2Ready: false,
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            });
+
+            // Wait for opponent
+            matchRef.on('value', (snapshot) => {
+                const match = snapshot.val();
+                if (match && match.status === 'ready' && match.player2) {
+                    joinMatch();
+                }
+            });
+        }
+
+        function joinMatch() {
+            matchRef = db.ref('matches/' + matchId);
+            
+            // Get match data
+            matchRef.once('value', (snapshot) => {
+                const match = snapshot.val();
+                currentText = match.text;
+                
+                document.getElementById('matchmakingScreen').classList.add('hidden');
+                document.getElementById('gameScreen').classList.remove('hidden');
+                
+                initializeDisplay();
+                setupGameListeners();
+            });
+
+            // Remove from waiting pool
+            if (playerRef) {
+                playerRef.remove();
+            }
+        }
+
+        function setupGameListeners() {
+            // Listen for ready states
+            matchRef.on('value', (snapshot) => {
+                const match = snapshot.val();
+                if (!match) return;
+                
+                const opponentKey = isHost ? 'player2Ready' : 'player1Ready';
+                opponentReadyState = match[opponentKey];
+                
+                checkBothReady();
+            });
+
+            // Listen for opponent stats
+            const opponentStatsKey = isHost ? 'player2Stats' : 'player1Stats';
+            matchRef.child(opponentStatsKey).on('value', (snapshot) => {
+                const stats = snapshot.val();
+                if (stats) {
+                    updateOpponentDisplay(stats);
+                }
+            });
+
+            // Listen for opponent finish
+            const opponentFinishKey = isHost ? 'player2Finished' : 'player1Finished';
+            matchRef.child(opponentFinishKey).on('value', (snapshot) => {
+                if (snapshot.val() && !myStats.finished) {
+                    endGame(false);
+                }
+            });
+        }
+
+        function cancelMatch() {
+            if (playerRef) {
+                playerRef.remove();
+            }
+            if (matchRef && isHost) {
+                matchRef.remove();
+            }
+            
+            resetToLobby();
+        }
+
+        function setReady() {
+            myReadyState = true;
+            const readyKey = isHost ? 'player1Ready' : 'player2Ready';
+            matchRef.update({ [readyKey]: true });
+            
+            document.getElementById('readyBtn').disabled = true;
+            document.getElementById('readyBtn').innerHTML = '<span>⏳ WAITING...</span>';
+            
+            checkBothReady();
+        }
+
+        async function checkBothReady() {
+            if (myReadyState && opponentReadyState && !gameActive) {
+                await countdown();
+                startGame();
+            }
+        }
+
+        function countdown() {
+            return new Promise((resolve) => {
+                const countdownEl = document.getElementById('countdown');
+                countdownEl.classList.remove('hidden');
+                let count = 3;
+                
+                countdownEl.textContent = count;
+                
+                const interval = setInterval(() => {
+                    count--;
+                    if (count > 0) {
+                        countdownEl.textContent = count;
+                    } else {
+                        countdownEl.textContent = 'GO!';
+                        setTimeout(() => {
+                            countdownEl.classList.add('hidden');
+                            resolve();
+                        }, 500);
+                        clearInterval(interval);
+                    }
+                }, 1000);
+            });
+        }
+
+        function startGame() {
+            gameActive = true;
+            startTime = Date.now();
+            document.getElementById('typingInput').disabled = false;
+            document.getElementById('typingInput').placeholder = '[TYPE HERE...]';
+            document.getElementById('typingInput').focus();
+            document.getElementById('readyBtn').style.display = 'none';
+        }
+
+        function initializeDisplay() {
+            const display = document.getElementById('textDisplay');
+            display.innerHTML = currentText.split('').map((char, i) => 
+                `<span class="char ${i === 0 ? 'current' : ''}">${char === ' ' ? '&nbsp;' : char}</span>`
+            ).join('');
+        }
+
+        function updateDisplay() {
+            const chars = document.querySelectorAll('.char');
+            chars.forEach((char, index) => {
+                char.classList.remove('current', 'correct', 'incorrect');
+                if (index < myStats.position) {
+                    char.classList.add('correct');
+                } else if (index === myStats.position) {
+                    char.classList.add('current');
+                }
+            });
+        }
+
+        function calculateWPM() {
+            if (!startTime) return 0;
+            const timeElapsed = (Date.now() - startTime) / 1000 / 60;
+            const wordsTyped = myStats.position / 5;
+            return Math.round(wordsTyped / timeElapsed) || 0;
+        }
+
+        function calculateAccuracy() {
+            const total = myStats.correct + myStats.incorrect;
+            if (total === 0) return 100;
+            return Math.round((myStats.correct / total) * 100);
+        }
+
+        function updateMyStats() {
+            const wpm = calculateWPM();
+            const accuracy = calculateAccuracy();
+            const progress = (myStats.position / currentText.length) * 100;
+            
+            document.getElementById('myWpm').textContent = wpm;
+            document.getElementById('myAcc').textContent = accuracy + '%';
+            document.getElementById('myProgress').style.width = progress + '%';
+            
+            // Send to Firebase
+            const statsKey = isHost ? 'player1Stats' : 'player2Stats';
+            matchRef.update({
+                [statsKey]: { wpm, accuracy, progress }
+            });
+        }
+
+        function updateOpponentDisplay(stats) {
+            document.getElementById('oppWpm').textContent = stats.wpm;
+            document.getElementById('oppAcc').textContent = stats.accuracy + '%';
+            document.getElementById('oppProgress').style.width = stats.progress + '%';
+        }
+
+        function endGame(won) {
+            gameActive = false;
+            document.getElementById('typingInput').disabled = true;
+            
+            const banner = document.createElement('div');
+            banner.className = 'result-banner';
+            
+            const wpm = calculateWPM();
+            const accuracy = calculateAccuracy();
+            
+            banner.innerHTML = `
+                <h2>${won ? '█ VICTORY █' : '█ DEFEAT █'}</h2>
+                <p class="terminal-line">WPM: ${wpm}</p>
+                <p class="terminal-line">ACCURACY: ${accuracy}%</p>
+                <p class="terminal-line" style="margin-top: 2rem; opacity: 0.7;">Click to continue</p>
+            `;
+            
+            document.body.appendChild(banner);
+            
+            banner.addEventListener('click', () => {
+                banner.remove();
+                leaveGame();
+            });
+        }
+
+        function leaveGame() {
+            if (matchRef) {
+                matchRef.remove();
+            }
+            resetToLobby();
+        }
+
+        function resetToLobby() {
+            gameActive = false;
+            myReadyState = false;
+            opponentReadyState = false;
+            myStats = { position: 0, correct: 0, incorrect: 0, finished: false };
+            startTime = null;
+            currentText = '';
+            
+            document.getElementById('gameScreen').classList.add('hidden');
+            document.getElementById('matchmakingScreen').classList.add('hidden');
+            document.getElementById('lobbyScreen').classList.remove('hidden');
+            
+            document.getElementById('typingInput').value = '';
+            document.getElementById('readyBtn').disabled = false;
+            document.getElementById('readyBtn').innerHTML = '<span>✓ READY</span>';
+            document.getElementById('readyBtn').style.display = 'inline-block';
+        }
+
+        // Handle typing
+        document.getElementById('typingInput').addEventListener('input', (e) => {
+            if (!gameActive || myStats.finished) return;
+            
+            const typedText = e.target.value;
+            let newPosition = 0;
+            let correct = 0;
+            let incorrect = 0;
+            
+            for (let i = 0; i < typedText.length; i++) {
+                if (typedText[i] === currentText[i]) {
+                    correct++;
+                    newPosition = i + 1;
+                } else {
+                    incorrect++;
+                }
+            }
+            
+            myStats.position = newPosition;
+            myStats.correct = correct;
+            myStats.incorrect = incorrect;
+            
+            updateDisplay();
+            updateMyStats();
+            
+            // Check if finished
+            if (myStats.position >= currentText.length && typedText === currentText) {
+                myStats.finished = true;
+                const finishKey = isHost ? 'player1Finished' : 'player2Finished';
+                matchRef.update({ [finishKey]: true });
+                endGame(true);
+            }
+        });
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (playerRef) playerRef.remove();
+            if (matchRef && isHost) matchRef.remove();
+        });
+    </script>
+</body>
+</html>
