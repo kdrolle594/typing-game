@@ -631,12 +631,12 @@
 
         // Firebase configuration - REPLACE WITH YOUR OWN CONFIG
         const firebaseConfig = {
-        apiKey: "AIzaSyBePoMD_BtWfFJNL-PhYqeLRlVxzp31vRE",
-        authDomain: "typing-96684.firebaseapp.com",
-        projectId: "typing-96684",
-        storageBucket: "typing-96684.firebasestorage.app",
-        messagingSenderId: "548048416376",
-        appId: "1:548048416376:web:2e8454f56c0ee25b51878d"
+            apiKey: "AIzaSyBePoMD_BtWfFJNL-PhYqeLRlVxzp31vRE",
+            authDomain: "typing-96684.firebaseapp.com",
+            projectId: "typing-96684",
+            storageBucket: "typing-96684.firebasestorage.app",
+            messagingSenderId: "548048416376",
+            appId: "1:548048416376:web:2e8454f56c0ee25b51878d"
         };
 
         // Initialize Firebase
@@ -694,27 +694,36 @@
             const roomText = textSamples[Math.floor(Math.random() * textSamples.length)];
             
             matchRef = db.ref('rooms/' + matchId);
-            await matchRef.set({
-                status: 'waiting',
-                host: playerId,
-                player2: null,
-                text: roomText,
-                hostReady: false,
-                player2Ready: false,
-                timestamp: firebase.database.ServerValue.TIMESTAMP
-            });
+            
+            try {
+                await matchRef.set({
+                    status: 'waiting',
+                    host: playerId,
+                    player2: null,
+                    text: roomText,
+                    hostReady: false,
+                    player2Ready: false,
+                    timestamp: firebase.database.ServerValue.TIMESTAMP
+                });
 
-            document.getElementById('lobbyScreen').classList.add('hidden');
-            document.getElementById('waitingScreen').classList.remove('hidden');
-            document.getElementById('roomIdDisplay').textContent = matchId;
+                console.log('Room created:', matchId); // Debug log
 
-            // Wait for player 2 to join
-            matchRef.on('value', (snapshot) => {
-                const room = snapshot.val();
-                if (room && room.player2 && room.status === 'ready') {
-                    joinedRoom();
-                }
-            });
+                document.getElementById('lobbyScreen').classList.add('hidden');
+                document.getElementById('waitingScreen').classList.remove('hidden');
+                document.getElementById('roomIdDisplay').textContent = matchId;
+
+                // Wait for player 2 to join
+                matchRef.on('value', (snapshot) => {
+                    const room = snapshot.val();
+                    console.log('Room update:', room); // Debug log
+                    if (room && room.player2 && room.status === 'ready') {
+                        joinedRoom();
+                    }
+                });
+            } catch (error) {
+                console.error('Error creating room:', error);
+                alert('Failed to create room: ' + error.message);
+            }
         }
 
         // Refresh and display available rooms
@@ -731,8 +740,8 @@
                 roomsRef.off('value', roomsListener);
             }
 
-            // Listen for rooms
-            roomsListener = roomsRef.orderByChild('status').equalTo('waiting').on('value', (snapshot) => {
+            // Listen for all rooms and filter client-side
+            roomsListener = roomsRef.on('value', (snapshot) => {
                 const roomsListEl = document.getElementById('roomsList');
                 
                 if (!snapshot.exists()) {
@@ -742,29 +751,52 @@
 
                 let roomsHtml = '';
                 const rooms = [];
+                const now = Date.now();
                 
                 snapshot.forEach((childSnapshot) => {
                     const room = childSnapshot.val();
                     const roomId = childSnapshot.key;
                     
-                    // Don't show rooms older than 5 minutes
-                    if (room.timestamp && (Date.now() - room.timestamp < 300000)) {
-                        rooms.push({ id: roomId, data: room });
+                    console.log('Room found:', roomId, room); // Debug log
+                    
+                    // Only show waiting rooms
+                    if (room.status === 'waiting') {
+                        // Calculate age - handle both server timestamp and regular timestamp
+                        let roomAge = 0;
+                        if (room.timestamp) {
+                            roomAge = now - room.timestamp;
+                        }
+                        
+                        console.log('Room age:', roomAge / 1000, 'seconds'); // Debug log
+                        
+                        // Don't show rooms older than 5 minutes (300000 ms)
+                        if (roomAge < 300000 || roomAge === 0) {
+                            rooms.push({ id: roomId, data: room, age: roomAge });
+                        } else {
+                            console.log('Room too old:', roomId, roomAge / 1000, 'seconds'); // Debug log
+                        }
+                    } else {
+                        console.log('Room not waiting:', roomId, room.status); // Debug log
                     }
                 });
+
+                console.log('Total waiting rooms found:', rooms.length); // Debug log
 
                 if (rooms.length === 0) {
                     roomsListEl.innerHTML = '<p style="opacity: 0.5;">No active rooms. Create one!</p>';
                     return;
                 }
 
-                rooms.forEach(({ id, data }) => {
-                    const timeAgo = Math.floor((Date.now() - data.timestamp) / 1000);
+                // Sort by newest first
+                rooms.sort((a, b) => a.age - b.age);
+
+                rooms.forEach(({ id, data, age }) => {
+                    const timeAgo = age > 0 ? Math.floor(age / 1000) : 0;
                     roomsHtml += `
                         <div class="room-item" onclick="joinRoom('${id}')">
                             <div class="room-info">
                                 <div class="room-id">ROOM: ${id}</div>
-                                <div class="room-status">Created ${timeAgo}s ago</div>
+                                <div class="room-status">Created ${timeAgo}s ago • Waiting for player</div>
                             </div>
                             <button class="join-btn" onclick="event.stopPropagation(); joinRoom('${id}')">JOIN →</button>
                         </div>
@@ -782,39 +814,50 @@
                 return;
             }
 
+            console.log('Attempting to join room:', roomId); // Debug log
+
             matchId = roomId;
             isHost = false;
             matchRef = db.ref('rooms/' + matchId);
 
-            // Check if room still exists and is waiting
-            const snapshot = await matchRef.once('value');
-            const room = snapshot.val();
+            try {
+                // Check if room still exists and is waiting
+                const snapshot = await matchRef.once('value');
+                const room = snapshot.val();
 
-            if (!room) {
-                alert('This room no longer exists.');
-                refreshRooms();
-                return;
+                console.log('Room data:', room); // Debug log
+
+                if (!room) {
+                    alert('This room no longer exists.');
+                    refreshRooms();
+                    return;
+                }
+
+                if (room.status !== 'waiting') {
+                    alert('This room is already full or has started.');
+                    refreshRooms();
+                    return;
+                }
+
+                // Join the room
+                await matchRef.update({
+                    status: 'ready',
+                    player2: playerId
+                });
+
+                console.log('Successfully joined room'); // Debug log
+
+                currentText = room.text;
+
+                document.getElementById('lobbyScreen').classList.add('hidden');
+                document.getElementById('gameScreen').classList.remove('hidden');
+
+                initializeDisplay();
+                setupGameListeners();
+            } catch (error) {
+                console.error('Error joining room:', error);
+                alert('Failed to join room: ' + error.message);
             }
-
-            if (room.status !== 'waiting') {
-                alert('This room is already full or has started.');
-                refreshRooms();
-                return;
-            }
-
-            // Join the room
-            await matchRef.update({
-                status: 'ready',
-                player2: playerId
-            });
-
-            currentText = room.text;
-
-            document.getElementById('lobbyScreen').classList.add('hidden');
-            document.getElementById('gameScreen').classList.remove('hidden');
-
-            initializeDisplay();
-            setupGameListeners();
         }
 
         // When room becomes ready (both players present)
