@@ -401,6 +401,58 @@
             60%, 100% { content: '...'; }
         }
 
+        .room-item {
+            background: rgba(0, 255, 0, 0.05);
+            border: 1px solid var(--terminal-dark-green);
+            padding: 1rem;
+            margin: 0.5rem 0;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .room-item:hover {
+            background: rgba(0, 255, 0, 0.1);
+            border-color: var(--terminal-green);
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+        }
+
+        .room-info {
+            flex: 1;
+        }
+
+        .room-id {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: var(--terminal-green);
+            text-shadow: 0 0 5px var(--terminal-green);
+        }
+
+        .room-status {
+            font-size: 0.9rem;
+            opacity: 0.7;
+            margin-top: 0.3rem;
+        }
+
+        .join-btn {
+            padding: 0.5rem 1.5rem;
+            background: transparent;
+            border: 2px solid var(--terminal-green);
+            color: var(--terminal-green);
+            cursor: pointer;
+            font-family: 'VT323', monospace;
+            font-size: 1.2rem;
+            transition: all 0.3s ease;
+        }
+
+        .join-btn:hover {
+            background: var(--terminal-green);
+            color: var(--terminal-bg);
+            box-shadow: 0 0 10px var(--terminal-green);
+        }
+
         @media (max-width: 768px) {
             h1 {
                 font-size: 2.5rem;
@@ -435,22 +487,32 @@
                 </div>
                 
                 <div class="btn-container">
-                    <button class="btn" onclick="findMatch()">
-                        <span>▶ FIND OPPONENT</span>
+                    <button class="btn" onclick="createRoom()">
+                        <span>+ CREATE ROOM</span>
                     </button>
+                    <button class="btn" onclick="refreshRooms()">
+                        <span>↻ REFRESH ROOMS</span>
+                    </button>
+                </div>
+
+                <div class="status-box" style="margin-top: 2rem;">
+                    <h2>AVAILABLE ROOMS</h2>
+                    <div id="roomsList" class="terminal-line" style="max-height: 300px; overflow-y: auto;">
+                        <p style="opacity: 0.5;">Loading rooms<span class="loading-dots"></span></p>
+                    </div>
                 </div>
             </div>
 
-            <!-- Matchmaking Screen -->
-            <div id="matchmakingScreen" class="hidden">
+            <!-- Waiting Screen -->
+            <div id="waitingScreen" class="hidden">
                 <div class="status-box">
-                    <h2 class="loading-dots">SEARCHING FOR OPPONENT</h2>
-                    <p class="terminal-line">Scanning global network...</p>
-                    <p class="terminal-line">Players online: <span id="onlineCount">-</span></p>
+                    <h2>ROOM CREATED</h2>
+                    <p class="terminal-line">Room ID: <span id="roomIdDisplay" style="color: var(--terminal-green); font-size: 1.5rem;">------</span></p>
+                    <p class="terminal-line loading-dots">Waiting for opponent to join</p>
                 </div>
                 
                 <div class="btn-container">
-                    <button class="btn" onclick="cancelMatch()">
+                    <button class="btn" onclick="cancelRoom()">
                         <span>✖ CANCEL</span>
                     </button>
                 </div>
@@ -569,13 +631,12 @@
 
         // Firebase configuration - REPLACE WITH YOUR OWN CONFIG
         const firebaseConfig = {
-            apiKey: "AIzaSyBePoMD_BtWfFJNL-PhYqeLRlVxzp31vRE",
-            authDomain: "typing-96684.firebaseapp.com",
-            projectId: "typing-96684",
-            storageBucket: "typing-96684.firebasestorage.app",
-            messagingSenderId: "548048416376",
-            appId: "1:548048416376:web:2e8454f56c0ee25b51878d"
-
+        apiKey: "AIzaSyBePoMD_BtWfFJNL-PhYqeLRlVxzp31vRE",
+        authDomain: "typing-96684.firebaseapp.com",
+        projectId: "typing-96684",
+        storageBucket: "typing-96684.firebasestorage.app",
+        messagingSenderId: "548048416376",
+        appId: "1:548048416376:web:2e8454f56c0ee25b51878d"
         };
 
         // Initialize Firebase
@@ -613,121 +674,185 @@
         let isHost = false;
         let myReadyState = false;
         let opponentReadyState = false;
+        let roomsListener = null;
 
-        // Show online players count
-        function updateOnlineCount() {
-            if (!db) return;
-            
-            const playersRef = db.ref('players');
-            playersRef.on('value', (snapshot) => {
-                const count = snapshot.numChildren();
-                const countEl = document.getElementById('onlineCount');
-                if (countEl) {
-                    countEl.textContent = count;
-                }
-            });
+        // Generate short room ID
+        function generateRoomId() {
+            return Math.random().toString(36).substring(2, 8).toUpperCase();
         }
 
-        // Find match
-        async function findMatch() {
+        // Create a new room
+        async function createRoom() {
             if (!db) {
                 alert('Firebase not configured. Please set up Firebase to enable multiplayer.');
                 return;
             }
 
-            document.getElementById('lobbyScreen').classList.add('hidden');
-            document.getElementById('matchmakingScreen').classList.remove('hidden');
-            
-            updateOnlineCount();
-
-            // Add player to waiting pool
-            playerRef = db.ref('players/' + playerId);
-            await playerRef.set({
-                status: 'waiting',
-                timestamp: firebase.database.ServerValue.TIMESTAMP
-            });
-
-            // Listen for available matches
-            const matchesRef = db.ref('matches');
-            matchesRef.orderByChild('status').equalTo('waiting').limitToFirst(1).once('value', async (snapshot) => {
-                if (snapshot.exists()) {
-                    // Join existing match
-                    const matchData = snapshot.val();
-                    matchId = Object.keys(matchData)[0];
-                    isHost = false;
-                    
-                    await db.ref('matches/' + matchId).update({
-                        status: 'ready',
-                        player2: playerId
-                    });
-                    
-                    joinMatch();
-                } else {
-                    // Create new match
-                    createMatch();
-                }
-            });
-        }
-
-        async function createMatch() {
+            matchId = generateRoomId();
             isHost = true;
-            matchId = 'match_' + Date.now();
             
-            matchRef = db.ref('matches/' + matchId);
+            const roomText = textSamples[Math.floor(Math.random() * textSamples.length)];
+            
+            matchRef = db.ref('rooms/' + matchId);
             await matchRef.set({
                 status: 'waiting',
-                player1: playerId,
+                host: playerId,
                 player2: null,
-                text: textSamples[Math.floor(Math.random() * textSamples.length)],
-                player1Ready: false,
+                text: roomText,
+                hostReady: false,
                 player2Ready: false,
                 timestamp: firebase.database.ServerValue.TIMESTAMP
             });
 
-            // Wait for opponent
+            document.getElementById('lobbyScreen').classList.add('hidden');
+            document.getElementById('waitingScreen').classList.remove('hidden');
+            document.getElementById('roomIdDisplay').textContent = matchId;
+
+            // Wait for player 2 to join
             matchRef.on('value', (snapshot) => {
-                const match = snapshot.val();
-                if (match && match.status === 'ready' && match.player2) {
-                    joinMatch();
+                const room = snapshot.val();
+                if (room && room.player2 && room.status === 'ready') {
+                    joinedRoom();
                 }
             });
         }
 
-        function joinMatch() {
-            matchRef = db.ref('matches/' + matchId);
+        // Refresh and display available rooms
+        function refreshRooms() {
+            if (!db) {
+                document.getElementById('roomsList').innerHTML = '<p style="color: #ff0000;">Firebase not configured</p>';
+                return;
+            }
+
+            const roomsRef = db.ref('rooms');
             
-            // Get match data
-            matchRef.once('value', (snapshot) => {
-                const match = snapshot.val();
-                currentText = match.text;
+            // Clear previous listener
+            if (roomsListener) {
+                roomsRef.off('value', roomsListener);
+            }
+
+            // Listen for rooms
+            roomsListener = roomsRef.orderByChild('status').equalTo('waiting').on('value', (snapshot) => {
+                const roomsListEl = document.getElementById('roomsList');
                 
-                document.getElementById('matchmakingScreen').classList.add('hidden');
+                if (!snapshot.exists()) {
+                    roomsListEl.innerHTML = '<p style="opacity: 0.5;">No rooms available. Create one!</p>';
+                    return;
+                }
+
+                let roomsHtml = '';
+                const rooms = [];
+                
+                snapshot.forEach((childSnapshot) => {
+                    const room = childSnapshot.val();
+                    const roomId = childSnapshot.key;
+                    
+                    // Don't show rooms older than 5 minutes
+                    if (room.timestamp && (Date.now() - room.timestamp < 300000)) {
+                        rooms.push({ id: roomId, data: room });
+                    }
+                });
+
+                if (rooms.length === 0) {
+                    roomsListEl.innerHTML = '<p style="opacity: 0.5;">No active rooms. Create one!</p>';
+                    return;
+                }
+
+                rooms.forEach(({ id, data }) => {
+                    const timeAgo = Math.floor((Date.now() - data.timestamp) / 1000);
+                    roomsHtml += `
+                        <div class="room-item" onclick="joinRoom('${id}')">
+                            <div class="room-info">
+                                <div class="room-id">ROOM: ${id}</div>
+                                <div class="room-status">Created ${timeAgo}s ago</div>
+                            </div>
+                            <button class="join-btn" onclick="event.stopPropagation(); joinRoom('${id}')">JOIN →</button>
+                        </div>
+                    `;
+                });
+
+                roomsListEl.innerHTML = roomsHtml;
+            });
+        }
+
+        // Join an existing room
+        async function joinRoom(roomId) {
+            if (!db) {
+                alert('Firebase not configured.');
+                return;
+            }
+
+            matchId = roomId;
+            isHost = false;
+            matchRef = db.ref('rooms/' + matchId);
+
+            // Check if room still exists and is waiting
+            const snapshot = await matchRef.once('value');
+            const room = snapshot.val();
+
+            if (!room) {
+                alert('This room no longer exists.');
+                refreshRooms();
+                return;
+            }
+
+            if (room.status !== 'waiting') {
+                alert('This room is already full or has started.');
+                refreshRooms();
+                return;
+            }
+
+            // Join the room
+            await matchRef.update({
+                status: 'ready',
+                player2: playerId
+            });
+
+            currentText = room.text;
+
+            document.getElementById('lobbyScreen').classList.add('hidden');
+            document.getElementById('gameScreen').classList.remove('hidden');
+
+            initializeDisplay();
+            setupGameListeners();
+        }
+
+        // When room becomes ready (both players present)
+        function joinedRoom() {
+            matchRef.once('value', (snapshot) => {
+                const room = snapshot.val();
+                currentText = room.text;
+                
+                document.getElementById('waitingScreen').classList.add('hidden');
                 document.getElementById('gameScreen').classList.remove('hidden');
                 
                 initializeDisplay();
                 setupGameListeners();
             });
+        }
 
-            // Remove from waiting pool
-            if (playerRef) {
-                playerRef.remove();
+        // Cancel room creation
+        function cancelRoom() {
+            if (matchRef) {
+                matchRef.remove();
             }
+            resetToLobby();
         }
 
         function setupGameListeners() {
             // Listen for ready states
             matchRef.on('value', (snapshot) => {
-                const match = snapshot.val();
-                if (!match) return;
+                const room = snapshot.val();
+                if (!room) return;
                 
-                const opponentKey = isHost ? 'player2Ready' : 'player1Ready';
-                opponentReadyState = match[opponentKey];
+                const opponentKey = isHost ? 'player2Ready' : 'hostReady';
+                opponentReadyState = room[opponentKey];
                 
                 checkBothReady();
             });
 
             // Listen for opponent stats
-            const opponentStatsKey = isHost ? 'player2Stats' : 'player1Stats';
+            const opponentStatsKey = isHost ? 'player2Stats' : 'hostStats';
             matchRef.child(opponentStatsKey).on('value', (snapshot) => {
                 const stats = snapshot.val();
                 if (stats) {
@@ -736,7 +861,7 @@
             });
 
             // Listen for opponent finish
-            const opponentFinishKey = isHost ? 'player2Finished' : 'player1Finished';
+            const opponentFinishKey = isHost ? 'player2Finished' : 'hostFinished';
             matchRef.child(opponentFinishKey).on('value', (snapshot) => {
                 if (snapshot.val() && !myStats.finished) {
                     endGame(false);
@@ -744,20 +869,9 @@
             });
         }
 
-        function cancelMatch() {
-            if (playerRef) {
-                playerRef.remove();
-            }
-            if (matchRef && isHost) {
-                matchRef.remove();
-            }
-            
-            resetToLobby();
-        }
-
         function setReady() {
             myReadyState = true;
-            const readyKey = isHost ? 'player1Ready' : 'player2Ready';
+            const readyKey = isHost ? 'hostReady' : 'player2Ready';
             matchRef.update({ [readyKey]: true });
             
             document.getElementById('readyBtn').disabled = true;
@@ -848,7 +962,7 @@
             document.getElementById('myProgress').style.width = progress + '%';
             
             // Send to Firebase
-            const statsKey = isHost ? 'player1Stats' : 'player2Stats';
+            const statsKey = isHost ? 'hostStats' : 'player2Stats';
             matchRef.update({
                 [statsKey]: { wpm, accuracy, progress }
             });
@@ -901,13 +1015,16 @@
             currentText = '';
             
             document.getElementById('gameScreen').classList.add('hidden');
-            document.getElementById('matchmakingScreen').classList.add('hidden');
+            document.getElementById('waitingScreen').classList.add('hidden');
             document.getElementById('lobbyScreen').classList.remove('hidden');
             
             document.getElementById('typingInput').value = '';
             document.getElementById('readyBtn').disabled = false;
             document.getElementById('readyBtn').innerHTML = '<span>✓ READY</span>';
             document.getElementById('readyBtn').style.display = 'inline-block';
+            
+            // Refresh rooms when returning to lobby
+            refreshRooms();
         }
 
         // Handle typing
@@ -938,7 +1055,7 @@
             // Check if finished
             if (myStats.position >= currentText.length && typedText === currentText) {
                 myStats.finished = true;
-                const finishKey = isHost ? 'player1Finished' : 'player2Finished';
+                const finishKey = isHost ? 'hostFinished' : 'player2Finished';
                 matchRef.update({ [finishKey]: true });
                 endGame(true);
             }
@@ -946,8 +1063,16 @@
 
         // Cleanup on page unload
         window.addEventListener('beforeunload', () => {
-            if (playerRef) playerRef.remove();
-            if (matchRef && isHost) matchRef.remove();
+            if (matchRef && isHost) {
+                matchRef.remove();
+            }
+        });
+
+        // Initialize - load rooms on page load
+        window.addEventListener('load', () => {
+            if (db) {
+                refreshRooms();
+            }
         });
     </script>
 </body>
